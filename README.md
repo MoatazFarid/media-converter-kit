@@ -74,6 +74,44 @@ Convert folder recursively and write MP3 files to a different directory:
 .\media-converter-kit.ps1 -InputPath "C:\Videos" -OutputPath "C:\Music" -Recursive
 ```
 
+## Tests
+
+Test file:
+- [`tests/media-converter-kit.Tests.ps1`](/D:/scripts/mkvtomp3/tests/media-converter-kit.Tests.ps1)
+
+What is covered:
+- Single file conversion for `.mkv`, `.mp4`, and `.ogg`
+- Folder conversion without `-Recursive`
+- Folder conversion with `-Recursive`
+
+Notes:
+- Tests use a mocked `ffmpeg.cmd`, so FFmpeg does **not** need to be installed to run tests.
+- Tests are written to be compatible with Windows PowerShell 5.1 (Pester 3.4 style).
+
+### How To Run Tests
+
+Run from the project root (`D:\scripts\mkvtomp3`):
+
+```powershell
+Invoke-Pester -Path .\tests\media-converter-kit.Tests.ps1
+```
+
+If `Invoke-Pester` is not available, install Pester:
+
+```powershell
+# PowerShell 7+
+Install-Module Pester -Scope CurrentUser -Force
+
+# Windows PowerShell 5.1 (if needed)
+Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+```
+
+Then run:
+
+```powershell
+Invoke-Pester -Path .\tests\media-converter-kit.Tests.ps1 -EnableExit
+```
+
 ## Notes
 
 - Existing output files are overwritten automatically.
