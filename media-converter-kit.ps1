@@ -1,13 +1,13 @@
 ﻿<#
 .SYNOPSIS
-    Media Converter Kit: Converts MKV, MP4, and OGG files to MP3 audio format.
+    Media Converter Kit: Converts MKV, MP4, OGG, and MOV files to MP3 audio format.
 
 .DESCRIPTION
-    This script uses FFmpeg to extract audio from MKV, MP4, and OGG files and convert them to MP3 format.
+    This script uses FFmpeg to extract audio from MKV, MP4, OGG, and MOV files and convert them to MP3 format.
     It can process a single file, multiple files, or all supported files in a directory.
 
 .PARAMETER InputPath
-    Path to a media file (MKV, MP4, OGG) or directory containing media files.
+    Path to a media file (MKV, MP4, OGG, MOV) or directory containing media files.
 
 .PARAMETER OutputPath
     Optional. Directory where MP3 files will be saved. Defaults to same location as input.
@@ -27,8 +27,12 @@
     Converts a single OGG file to MP3.
 
 .EXAMPLE
+    .\media-converter-kit.ps1 -InputPath "C:\Videos\clip.mov"
+    Converts a single MOV file to MP3.
+
+.EXAMPLE
     .\media-converter-kit.ps1 -InputPath "C:\Videos" -Bitrate 320k
-    Converts all MKV, MP4, and OGG files in the directory to MP3 with 320k bitrate.
+    Converts all MKV, MP4, OGG, and MOV files in the directory to MP3 with 320k bitrate.
 
 .EXAMPLE
     .\media-converter-kit.ps1 -InputPath "C:\Videos" -OutputPath "C:\Music" -Recursive
@@ -37,7 +41,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true, HelpMessage="Path to media file (MKV, MP4, OGG) or directory")]
+    [Parameter(Mandatory=$true, HelpMessage="Path to media file (MKV, MP4, OGG, MOV) or directory")]
     [string]$InputPath,
     
     [Parameter(Mandatory=$false)]
@@ -70,7 +74,7 @@ function Test-FFmpegInstalled {
 }
 
 # Supported file extensions
-$supportedExtensions = @("*.mkv", "*.mp4", "*.ogg")
+$supportedExtensions = @("*.mkv", "*.mp4", "*.ogg", "*.mov")
 
 # Function to convert single media file to MP3
 function Convert-ToMp3 {
@@ -111,7 +115,7 @@ function Convert-ToMp3 {
 # Main script execution
 Write-Host "==================================" -ForegroundColor Magenta
 Write-Host "  Media Converter Kit" -ForegroundColor Magenta
-Write-Host "  (MKV, MP4, OGG -> MP3)" -ForegroundColor Magenta
+Write-Host "  (MKV, MP4, OGG, MOV -> MP3)" -ForegroundColor Magenta
 Write-Host "==================================" -ForegroundColor Magenta
 Write-Host "   ____                                 _            " -ForegroundColor DarkCyan
 Write-Host "  / ___|___  _ ____   _____ _ __ _ __ | |_ ___ _ __ " -ForegroundColor DarkCyan
@@ -148,7 +152,7 @@ if ($isDirectory) {
     }
 
     if ($mediaFiles.Count -eq 0) {
-        Write-Host "`n[FAIL] No supported files (MKV, MP4, OGG) found in: $InputPath" -ForegroundColor Red
+        Write-Host "`n[FAIL] No supported files (MKV, MP4, OGG, MOV) found in: $InputPath" -ForegroundColor Red
         exit 1
     }
 
@@ -156,8 +160,8 @@ if ($isDirectory) {
 }
 else {
     $fileExt = [System.IO.Path]::GetExtension($InputPath).ToLower()
-    if ($fileExt -notin @(".mkv", ".mp4", ".ogg")) {
-        Write-Host "`n[FAIL] Error: Input file must be an MKV, MP4, or OGG file" -ForegroundColor Red
+    if ($fileExt -notin @(".mkv", ".mp4", ".ogg", ".mov")) {
+        Write-Host "`n[FAIL] Error: Input file must be an MKV, MP4, OGG, or MOV file" -ForegroundColor Red
         exit 1
     }
     $mediaFiles = @(Get-Item $InputPath)

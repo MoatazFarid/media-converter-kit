@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Tests verify that the script:
-      - Identifies and converts single MKV, MP4, and OGG files to MP3
+      - Identifies and converts single MKV, MP4, OGG, and MOV files to MP3
       - Processes all supported files in a flat directory
       - Processes all supported files recursively when -Recursive is used
 
@@ -140,6 +140,20 @@ exit /b 0
         }
     }
 
+    Context 'Single MOV file' {
+        It 'Correctly identifies and converts a single MOV file to MP3' {
+            $inputDir  = Join-Path $TestDrive 'single-mov-in'
+            $outputDir = Join-Path $TestDrive 'single-mov-out'
+            New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'sample.mov') -Force | Out-Null
+
+            Invoke-ConverterScript -InputPath (Join-Path $inputDir 'sample.mov') `
+                                   -OutputPath $outputDir
+
+            Join-Path $outputDir 'sample.mp3' | Should Exist
+        }
+    }
+
     # ── Directory processing ───────────────────────────────────────────────────
 
     Context 'Flat directory (no -Recursive)' {
@@ -147,15 +161,17 @@ exit /b 0
             $inputDir  = Join-Path $TestDrive 'dir-flat-in'
             $outputDir = Join-Path $TestDrive 'dir-flat-out'
             New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $inputDir 'clip.mkv')  -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $inputDir 'movie.mp4') -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $inputDir 'track.ogg') -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'clip.mkv')   -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'movie.mp4')  -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'track.ogg')  -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'screen.mov') -Force | Out-Null
 
             Invoke-ConverterScript -InputPath $inputDir -OutputPath $outputDir
 
-            Join-Path $outputDir 'clip.mp3'  | Should Exist
-            Join-Path $outputDir 'movie.mp3' | Should Exist
-            Join-Path $outputDir 'track.mp3' | Should Exist
+            Join-Path $outputDir 'clip.mp3'   | Should Exist
+            Join-Path $outputDir 'movie.mp3'  | Should Exist
+            Join-Path $outputDir 'track.mp3'  | Should Exist
+            Join-Path $outputDir 'screen.mp3' | Should Exist
         }
     }
 
