@@ -14,6 +14,12 @@
 
 .PARAMETER Bitrate
     Audio bitrate for MP3 output. Default is 192k. Common values: 128k, 192k, 256k, 320k.
+    Ignored when -TargetSizeMB is specified.
+
+.PARAMETER TargetSizeMB
+    Target output file size in megabytes. When specified, the required bitrate is calculated
+    automatically from the input file duration using: bitrate_kbps = (TargetSizeMB * 8 * 1024) / duration_seconds.
+    The computed bitrate is clamped to the 32k–320k range. Takes precedence over -Bitrate.
 
 .PARAMETER Recursive
     If specified, searches subdirectories for media files.
@@ -37,6 +43,14 @@
 .EXAMPLE
     .\media-converter-kit.ps1 -InputPath "C:\Videos" -OutputPath "C:\Music" -Recursive
     Converts all supported files (including subdirectories) to MP3 and saves to C:\Music.
+
+.EXAMPLE
+    .\media-converter-kit.ps1 -InputPath "C:\Videos\lecture.mkv" -TargetSizeMB 50
+    Converts a single MKV file to MP3, automatically choosing a bitrate that targets ~50 MB output.
+
+.EXAMPLE
+    .\media-converter-kit.ps1 -InputPath "C:\Videos" -TargetSizeMB 10
+    Converts all supported files in the directory, each targeting ~10 MB output size.
 #>
 
 [CmdletBinding()]
@@ -49,7 +63,10 @@ param(
     
     [Parameter(Mandatory=$false)]
     [string]$Bitrate = "192k",
-    
+
+    [Parameter(Mandatory=$false)]
+    [double]$TargetSizeMB = 0,
+
     [Parameter(Mandatory=$false)]
     [switch]$Recursive
 )
@@ -71,6 +88,37 @@ function Test-FFmpegInstalled {
         Write-Host "  3. Or install via Scoop: scoop install ffmpeg" -ForegroundColor Cyan
         return $false
     }
+}
+
+# Function to retrieve media duration (in seconds) via ffprobe
+function Get-MediaDuration {
+    param([string]$InputFile)
+    try {
+        $duration = & ffprobe -v error -show_entries format=duration `
+                              -of default=noprint_wrappers=1:nokey=1 $InputFile 2>&1
+        if ($LASTEXITCODE -eq 0 -and ($duration -match '^\d+(\.\d+)?$')) {
+            return [double]$duration
+        }
+    }
+    catch {}
+    return 0
+}
+
+# Function to calculate the bitrate needed to hit a target output file size.
+# Formula: bitrate_kbps = (TargetSizeMB * 8 * 1024) / duration_seconds
+# Result is clamped to the practical MP3 range of 32k–320k.
+function Get-BitrateForTargetSize {
+    param(
+        [double]$TargetSizeMB,
+        [double]$DurationSeconds
+    )
+    if ($DurationSeconds -le 0) {
+        Write-Host "  [WARN] Could not determine duration; falling back to 192k" -ForegroundColor Yellow
+        return "192k"
+    }
+    $bitrateKbps = [math]::Floor(($TargetSizeMB * 8 * 1024) / $DurationSeconds)
+    $bitrateKbps = [math]::Max(32, [math]::Min(320, $bitrateKbps))
+    return "${bitrateKbps}k"
 }
 
 # Supported file extensions
@@ -184,7 +232,11 @@ if (-not (Test-Path $OutputPath)) {
 }
 
 Write-Host "`nSettings:" -ForegroundColor Yellow
-Write-Host "  Bitrate: $Bitrate" -ForegroundColor White
+if ($TargetSizeMB -gt 0) {
+    Write-Host "  Target Size: $TargetSizeMB MB (bitrate calculated per file)" -ForegroundColor White
+} else {
+    Write-Host "  Bitrate: $Bitrate" -ForegroundColor White
+}
 Write-Host "  Output Directory: $OutputPath" -ForegroundColor White
 
 # Convert files
@@ -201,9 +253,17 @@ for ($i = 0; $i -lt $totalFiles; $i++) {
     # Generate output filename
     $outputFileName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name) + ".mp3"
     $outputFilePath = Join-Path $OutputPath $outputFileName
-    
+
+    # Determine effective bitrate (calculate from target size if requested)
+    $effectiveBitrate = $Bitrate
+    if ($TargetSizeMB -gt 0) {
+        $duration = Get-MediaDuration -InputFile $file.FullName
+        $effectiveBitrate = Get-BitrateForTargetSize -TargetSizeMB $TargetSizeMB -DurationSeconds $duration
+        Write-Host "  Target size: $TargetSizeMB MB | Duration: $([math]::Round($duration, 1))s | Bitrate: $effectiveBitrate" -ForegroundColor DarkCyan
+    }
+
     # Convert file
-    if (Convert-ToMp3 -InputFile $file.FullName -OutputFile $outputFilePath -Bitrate $Bitrate) {
+    if (Convert-ToMp3 -InputFile $file.FullName -OutputFile $outputFilePath -Bitrate $effectiveBitrate) {
         $successCount++
     }
     else {

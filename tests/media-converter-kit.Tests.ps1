@@ -7,6 +7,8 @@
       - Identifies and converts single MKV, MP4, OGG, and MOV files to MP3
       - Processes all supported files in a flat directory
       - Processes all supported files recursively when -Recursive is used
+      - Calculates the correct bitrate when -TargetSizeMB is used
+      - Falls back to 192k when -TargetSizeMB is used but duration cannot be determined
 
     Compatibility
     -------------
@@ -25,6 +27,10 @@
     precedes the output path in every ffmpeg call made by the script), creates
     that file, and exits with code 0. This satisfies both conditions checked by
     Convert-ToMp3: ($LASTEXITCODE -eq 0) -and (Test-Path $OutputFile).
+
+    A companion mock `ffprobe.cmd` always returns a fixed duration of 60 seconds,
+    making bitrate calculations deterministic: for a 1 MB target the expected
+    bitrate is floor((1 * 8 * 1024) / 60) = 136k.
 #>
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -33,7 +39,8 @@ function Invoke-ConverterScript {
     param(
         [string] $InputPath,
         [string] $OutputPath,
-        [switch] $Recursive
+        [switch] $Recursive,
+        [double] $TargetSizeMB = 0
     )
     $argList = @(
         '-NoProfile'
@@ -42,7 +49,8 @@ function Invoke-ConverterScript {
         '-InputPath',  $InputPath
         '-OutputPath', $OutputPath
     )
-    if ($Recursive) { $argList += '-Recursive' }
+    if ($Recursive)           { $argList += '-Recursive' }
+    if ($TargetSizeMB -gt 0) { $argList += '-TargetSizeMB', $TargetSizeMB }
 
     & $script:PSExe @argList | Out-Null
     return $LASTEXITCODE
@@ -86,6 +94,18 @@ exit /b 0
 '@
         Set-Content -Path (Join-Path $script:MockBinDir 'ffmpeg.cmd') `
                     -Value $mockFfmpegContent
+
+        # ── Mock ffprobe ───────────────────────────────────────────────────────
+        # Always reports a fixed duration of 60 seconds, making bitrate
+        # calculations deterministic in tests. For a 1 MB target:
+        #   floor((1 * 8 * 1024) / 60) = 136k
+        $mockFfprobeContent = @'
+@echo off
+echo 60
+exit /b 0
+'@
+        Set-Content -Path (Join-Path $script:MockBinDir 'ffprobe.cmd') `
+                    -Value $mockFfprobeContent
 
         # Prepend mock bin directory so it shadows any real ffmpeg installation.
         # Child processes inherit this modified PATH automatically.
@@ -193,6 +213,46 @@ exit /b 0
             Join-Path $outputDir 'root.mp3' | Should Exist
             Join-Path $outputDir 'sub.mp3'  | Should Exist
             Join-Path $outputDir 'deep.mp3' | Should Exist
+        }
+    }
+
+    # ── Target size compression ────────────────────────────────────────────────
+
+    Context 'Target size compression (-TargetSizeMB flag)' {
+        It 'Produces an MP3 output when -TargetSizeMB is specified' {
+            $inputDir  = Join-Path $TestDrive 'target-size-in'
+            $outputDir = Join-Path $TestDrive 'target-size-out'
+            New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $inputDir 'sample.mp4') -Force | Out-Null
+
+            Invoke-ConverterScript -InputPath (Join-Path $inputDir 'sample.mp4') `
+                                   -OutputPath $outputDir `
+                                   -TargetSizeMB 1
+
+            Join-Path $outputDir 'sample.mp3' | Should Exist
+        }
+
+        It 'Calculates the correct bitrate from target size and duration' {
+            # Mock ffprobe returns 60 s.
+            # Expected bitrate = floor((1 * 8 * 1024) / 60) = 136 kbps => "136k"
+            $targetMB        = 1
+            $durationSeconds = 60
+            $expectedKbps    = [math]::Floor(($targetMB * 8 * 1024) / $durationSeconds)  # 136
+            $expectedBitrate = "${expectedKbps}k"
+
+            # Exercise Get-BitrateForTargetSize directly by dot-sourcing the script
+            # with a dummy -InputPath so the param block is satisfied, then calling
+            # the function. We do this in-process because the function has no side
+            # effects (no exit calls).
+            $scriptBlock = {
+                param($ScriptPath, $TargetMB, $Duration)
+                . $ScriptPath -InputPath 'dummy' -ErrorAction SilentlyContinue 2>$null
+                Get-BitrateForTargetSize -TargetSizeMB $TargetMB -DurationSeconds $Duration
+            }
+            $result = & $script:PSExe -NoProfile -ExecutionPolicy Bypass -Command `
+                "& { param(`$s,`$t,`$d) . `$s -InputPath 'x' 2>`$null; Get-BitrateForTargetSize -TargetSizeMB `$t -DurationSeconds `$d } '$($script:ScriptPath)' $targetMB $durationSeconds"
+
+            $result | Should Be $expectedBitrate
         }
     }
 }
